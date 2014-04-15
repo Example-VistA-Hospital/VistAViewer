@@ -18,11 +18,9 @@
 */
 
 var application = {
-	'labels' : {
-				sDataDictionary : 'Data Dictionary',
+	'labels' : {sDataDictionary : 'Data Dictionary',
 				sPatchRequired: 'Required Patches',
-				sPatchDescription: 'Description'
-				},
+				sPatchDescription: 'Description'},
 				
 	'session': {
 				patch : {},
@@ -45,21 +43,28 @@ EWD.application = {
 		EWD.getFragment('patchSelection.html', 'patch_SelectionPane'); 
 		EWD.getFragment('rpcSelection.html', 'rpc_SelectionPane');
 		EWD.getFragment('ddSelection.html', 'dd_SelectionPane');
+		EWD.getFragment('selectionPane.html', 'other_SelectionPane');
 
 		EWD.getFragment('patchSummary.html', 'patch_SummaryPane'); 
 
 		EWD.getFragment('ddData.html', 'ddData_Container');		
-		EWD.getFragment('patchRouitneList.html', 'patchRoutineList_Container');		
+		EWD.getFragment('patchRoutineList.html', 'patchRoutineList_Container');		
 		EWD.getFragment('routineDetail.html', 'routine_Container'); 	
 		EWD.getFragment('rpcDetail.html', 'rpc_Container');
 		EWD.getFragment('infoDetail.html', 'info_Container'); 		
 		EWD.getFragment('rpcTesterForm.html', 'RPCTesterForm'); 
 		
 		// add listener to each navbar button
-        $('#navList').children().each(function() { 
-          $('#' + this.id).on('click', function() {
-            appSwap(this.id);
-          });
+		$('#navList').children().each(function() { 
+			$('#' + this.id).on('click', function() {
+			appSwap(this.id);
+			});
+		});
+		  
+		 $('#navDropdownComponents').children().each(function() { 
+			$('#' + this.id).on('click', function() {
+			appSwap(this.id);
+			});		  
         });
 	},
 
@@ -131,6 +136,27 @@ EWD.application = {
 				});
 		},
 		
+		'selectionPane.html' : function(messageObj) {
+			$('#btnShowResultList').click(function(e) {	
+					
+					e.preventDefault();
+					
+					$(this).button('loading');
+					
+					
+					hideInfoPanes();	// hide information panes
+							
+					EWD.sockets.sendMessage({
+						type: "processSelection",
+						params: {
+							nameStart : document.getElementById('nameStart').value,
+							nameContain : document.getElementById('nameContain').value,
+							component : $(this).attr('data-search-for')
+						}
+					});
+				});
+		},
+		
 		'rpcSelection.html' : function(messageObj) {
 		
 			$('#btnShowRPCList').click(function(e) {	
@@ -162,9 +188,9 @@ EWD.application = {
 					
 					$('#RPCTesterFormTitle').text('RPC [' + application.session.rpc.name  + ']');
 					
-					$('#DUZ').text(application.session.rpcDUZ);
-					$('#Division').text(application.session.rpcDivision);
-					$('#RPCContextId').text(application.session.rpcContext);
+					$('#DUZ').val(application.session.rpcDUZ);
+					$('#Division').val(application.session.rpcDivision);
+					$('#RPCContextId').val(application.session.rpcContext);
 					
 					var inputParams = $('<div></div>').attr('id', 'RPCTesterParams');
 							
@@ -272,8 +298,7 @@ EWD.application = {
 					application.session.rpcDivision = $('#Division').val();
 					application.session.rpcContext =  $('#RPCContextId').val();
 					
-					var rpc = {
-								"name": application.session.rpc.name,
+					var rpc = {"name": application.session.rpc.name,
 								"duz": application.session.rpcDUZ, 
 								"division": application.session.rpcDivision, 
 								"context": application.session.rpcContext, 
@@ -358,7 +383,9 @@ EWD.application = {
 		},
 		
 		'processRPCSelection': function(messageObj) {	// process selected RPCs and create a list
-			var rpcs = messageObj.message;
+			var rpcs = messageObj.message.rpcs;
+			var component = messageObj.message.component;
+			
 			if (document.getElementById('rpcAlphaSort').checked) {
 				rpcs = rpcs.sort(function(a, b){
 								return a.name > b.name;
@@ -378,8 +405,8 @@ EWD.application = {
 				html.append(delimiter);
 				html.append($('<a></a>')
 						.addClass('btn-link')
-						.attr('data-component-file','8994')
-						.attr('data-component-name','REMOTE PROCEDURE')
+						.attr('data-component-file',component.file)
+						.attr('data-component-name',component.name)
 						.attr('data-ien',rpcs[rpc].ien)
 						.text(text));
 			
@@ -394,12 +421,43 @@ EWD.application = {
 								});
 		},
 		
+		'processSelection': function(messageObj) {	// process selected items and create a list
+			var items = messageObj.message.items;
+			var component = messageObj.message.component;
+			
+			var delimiter = "";
+			var text;
+			var html =$('<div></div>');
+			for (var item in items) {			
+				
+				text = items[item].name;
+				
+				html.append(delimiter);
+				html.append($('<a></a>')
+						.addClass('btn-link')
+						.attr('data-ien',items[item].ien)
+						.attr('data-component-file',component.file)
+						.attr('data-component-name',component.name)
+						.text(items[item].name));
+			
+				delimiter = "<br>";
+			};
+			
+			$('#btnShowResultList').button('reset');
+			$('#selectionResultList').html(html);
+			
+			$('#selectionResultList a').click(function (e) {
+										displayPatchComponentDetails($(this));
+									});
+		},
+		
 		'processPatchSelection': function(messageObj) {	// process selected patches and create a list
-			var html = '';
 			var patches = messageObj.message;
 			
 			var delimiter = "";
+			var text;
 			var html =$('<div></div>');
+			
 			for (var patch in patches) {			
 				
 				text = patches[patch].name;
@@ -474,13 +532,13 @@ EWD.application = {
 				.addClass('btn-link')
 				.attr('id','patchComponentItemDD')
 				.attr('data-patch-ien',patch.ien)
-				.attr('data-component-file',4)
-				.attr('data-component-name','Data Dictionary')
+				.attr('data-component-file',patch.dd.file)
+				.attr('data-component-name',patch.dd.name)
 				.text('Data Dictionary');
 						
 			aLink.append($('<span></span>')
 					.addClass('badge')
-					.text(patch.ddCounter > 0 ? patch.ddCounter : ''));
+					.text(patch.dd.counter > 0 ? patch.dd.counter : ''));
 						
 			html = $('<div></div>').append(aLink);		
 			
@@ -746,9 +804,38 @@ EWD.onSocketMessage = function(messageObj) {
 
 };
 
+var resetSelectionPane = function (target) {
+	var paneHeading;
+	
+	if (target === 'securityKey') {	
+		paneHeading = 'Select Security Key';
+	} else if (target === 'parameterDefinition') {
+		paneHeading = 'Select Parameter Definition';
+	} else if (target === 'option') {
+		paneHeading = 'Select Option';
+	} else if (target === 'routine') {
+		paneHeading = 'Select Routine';
+	};
+	
+	$('#selectionPaneHeading').html('<h3 class="panel-title">' + paneHeading + '</h3>')
+	$('#btnShowResultList').attr('data-search-for', target);
+	$('#selectionResultList').html($('<div></div>'));
+	$('#nameStart').val('');
+	$('#nameContain').val('');
+};
+
 var appSwap = function(targetId) {
 	var target = targetId.split('_')[0];
-	showPane(target + "_SelectionPane");
+	var targetPane;
+	
+	if (target === 'securityKey' || target === 'parameterDefinition' || target === 'option'  || target === 'routine') {
+		resetSelectionPane(target);
+		targetPane = "other_SelectionPane";
+	} else {
+		targetPane = target + "_SelectionPane";
+	};
+	
+	showPane(targetPane);
 };
 
 var displayPatchSummary = function(obj) {
@@ -906,6 +993,9 @@ var showPane = function(name) {
 	case 'dd_SelectionPane':
 		hideAllPanes();	
 		break;
+	case 'other_SelectionPane':
+		hideAllPanes();
+		break;
 	case 'patch_SummaryPane':
 		$('#patch_SelectionPane').hide();
 		$('#patchComponentList').hide();
@@ -927,6 +1017,7 @@ var showPane = function(name) {
 };
 
 var hideAllPanes = function() {
+	$('#other_SelectionPane').hide();
 	$('#patch_SelectionPane').hide();
 	$('#patch_SummaryPane').hide();
 	$('#patchRoutineList_Container').hide();
@@ -1108,7 +1199,7 @@ var renderRPCDetails = function(rpc, callingContainer) {
 
 var renderPatchComponentDetails = function (component) {
 
-	var text = '';
+	var text;
 
 	switch (component.component.name)
 	{
