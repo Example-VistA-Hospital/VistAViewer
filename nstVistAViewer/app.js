@@ -46,7 +46,7 @@ EWD.application = {
 		EWD.getFragment('selectionPane.html', 'other_SelectionPane');
 
 		EWD.getFragment('patchSummary.html', 'patch_SummaryPane'); 
-
+		EWD.getFragment('ddFieldDetail.html', 'ddFieldDetail_Container'); 
 		EWD.getFragment('ddData.html', 'ddData_Container');		
 		EWD.getFragment('patchRoutineList.html', 'patchRoutineList_Container');		
 		EWD.getFragment('routineDetail.html', 'routine_Container'); 	
@@ -103,7 +103,9 @@ EWD.application = {
 					$(this).button('loading');
 					
 					hideInfoPanes();	// hide information panes
-							
+					
+					$('#ddList').html($('<div></div>'));	// clear the current list		
+					
 					EWD.sockets.sendMessage({
 						type: "processDDSelection",
 					params: {
@@ -344,8 +346,23 @@ EWD.application = {
 						});
 										
 				});
-			}
+			},
 		
+		'ddFieldDetail.html' : function(messageObj) {
+			
+			$('#ddFieldDetailClose').click(function(e) { 
+				
+				if (application.session.callingContainer.length > 0) {
+					
+					showPane(application.session.callingContainer);
+					application.session.callingContainer = '';
+					
+				} else {
+					$('#ddFieldDetail_Container').hide();
+				};
+			});
+		
+			}
 		},
 		   
 	onMessage: {
@@ -457,7 +474,6 @@ EWD.application = {
 			var delimiter = "";
 			var text;
 			var html =$('<div></div>');
-			
 			for (var patch in patches) {			
 				
 				text = patches[patch].name;
@@ -683,22 +699,14 @@ EWD.application = {
 									routineList[i].datetimeUpdated
 								]
 								);
-				}	
+				};	
 
 				var ddDataListDT=$('#patchRoutineListTable').dataTable({
 						'bDestroy':true,
 						'aaData': aaData,
 						'aoColumns': [
 							{'bVisible':false},{'sTitle':'Name'},{'sTitle':'Checksum'},{'sTitle':'Description'},{'sTitle':'Patches'},{'sTitle':'Updated', 'sType' : 'date'}
-						],
-						        "oTableTools": {
-            "aButtons": [
-                {
-                    "sExtends":    "text",
-                    "sButtonText": "Hello world"
-                }
-            ]
-        }
+						]
 					}).css('width','');
 				
 				application.session.routineListLoaded = true;
@@ -749,10 +757,28 @@ EWD.application = {
 			var pFileName = messageObj.params.fileName;
 			
 			var detail = messageObj.params.detail;
+			var gl = messageObj.params.gl;
 			
 			$('#InfoDetailName').text(formatFileName(pFile, pFileName));
-			$('#InfoDetailContent').html(dispJSON(detail));	
+			$('#InfoDetailContent').html(renderDDDefinition(messageObj.params));	
+			$('#InfoDetailContent a[data-field-number]').on('click',function(e) {
+											displayDDField($(this));
+										});
+			$('#InfoDetailContent a[data-file]').on('click',function(e) {
+											displayDDFile($(this));
+											});
 			showPane('info_Container');
+		},
+	
+		'displayDDField' : function(messageObj) {
+			var pFileNumber = messageObj.params.file;
+			var pField = messageObj.params.field;
+			var fieldDef = messageObj.params.attributes;
+			
+			$('#ddFieldDetailName').text(formatFieldName(pFileNumber, pField));
+			$('#ddFieldDetailContent').html(renderDDFieldDefinition(fieldDef));  // TODO
+			
+			showPane('ddFieldDetail_Container');
 		},
 	
 		'displayDDData' : function(messageObj) {
@@ -783,8 +809,12 @@ EWD.application = {
 	}
  };
 
- var formatFileName = function (pFile, pFileName) {
+var formatFileName = function (pFile, pFileName) {
 	return pFileName + ' file (#' + pFile + ')'
+ };
+ 
+var formatFieldName = function (pFile, pField) {
+	return pField.name + ' field (#' + pFile + ', ' + pField.number + ')'
  };
  
 EWD.onSocketsReady = function() {
@@ -959,6 +989,24 @@ var displayDDData = function(obj) {
 	});
 };
 
+var displayDDField = function(obj) {
+
+	var file = obj.attr('data-file-number');
+	var field = obj.attr('data-field-number');
+	
+	application.session.callingContainer = 'info_Container';
+	
+	hideInfoPanes();
+	
+	EWD.sockets.sendMessage({
+		type: "getDDFieldDefinition",
+		params: {				
+			file : file,
+			field : field
+		}
+	});
+};
+
 var displayRoutine = function(e, obj) {
 	e.preventDefault();
 	e.stopPropagation();
@@ -1008,9 +1056,15 @@ var showPane = function(name) {
 		break;
 	case 'patchRoutineList_Container' :
 		$('#routine_Container').hide();
+		break;
 	case 'routine_Container':
 		$('#'+application.session.callingContainer).hide();
 		break;
+	case 'ddFieldDetail_Container':
+		$('#'+application.session.callingContainer).hide();
+		break;
+	case 'info_Container':
+		$('#ddFieldDetail_Container').hide();
 	}; 
 	
 	$('#' + name).show();
@@ -1025,6 +1079,7 @@ var hideAllPanes = function() {
 	$('#rpc_Container').hide();
 	$('#routine_Container').hide();
 	$('#dd_SelectionPane').hide();
+	$('#ddFieldDetail_Container').hide();
 	$('#ddData_Container').hide();
 	$('#info_Container').hide();
 };
@@ -1035,6 +1090,7 @@ var hideInfoPanes = function() {
 	$('#routine_Container').hide();
 	$('#patchComponentList').hide();
 	$('#patchRoutineList_Container').hide();
+	$('#ddFieldDetail_Container').hide();
 	$('#ddData_Container').hide();
 };
 
@@ -1270,7 +1326,7 @@ var renderPatchSecurityKey = function(component){
 	text += "<tr class='info'><th>Description</th></tr>";
 	text += "<tr><td>";
 	text += "<pre>";
-	var tmp = wordProcessingArray(component['DESCRIPTION'])
+	var tmp = wordProcessingArray(component['DESCRIPTION']);
 	text += (tmp.length > 0) ? htmlEscape(tmp) : "&nbsp;";
 	text += "</pre>";
 	text += "</td></tr>";
@@ -1351,7 +1407,6 @@ var renderPatchOption = function(component){
 	return text;
 };
 
-
 // render Kernel component Parameters - PARAMETERS file (#8989.5)
 var renderPatchParameterDefinition = function(pComponent) {
 	var item = pComponent.detail[pComponent.component.file][pComponent.ien + ',']
@@ -1400,6 +1455,191 @@ var renderPatchParameterDefinition = function(pComponent) {
 
 	return text;
 };
+
+// render Data Dictionary
+var renderDDDefinition = function(pDDDetail) {
+	var pDD = pDDDetail.detail;
+	var pStorage = pDDDetail.gl;
+	
+	var tmp = '<p>' + '<strong>' + 'Description' + '</strong>' + '</p>';
+	
+	tmp +=  wordProcessingArray2(pDD['DESCRIPTION']);
+	tmp += '<p></p>';
+	
+	tmp += '<p><strong>File Access</strong></p>'; 
+	tmp += '<p>';
+	tmp += 'Data Dictionary Access: ' + pDD["DD ACCESS"]["E"] + '<br>';
+	tmp += 'Read Access:  ' + pDD["RD ACCESS"]["E"] + '<br>';
+	tmp += 'Write Access: ' + pDD["WR ACCESS"]["E"] + '<br>';
+	tmp += 'Laygo Access: ' + pDD["LAYGO ACCESS"]["E"] + '<br>';
+	tmp += 'Delete Access: ' + pDD["DEL ACCESS"]["E"] + '<br>';
+	tmp += 'Audit Access: ' + pDD["AUDIT ACCESS"]["E"];
+	tmp += '<br>';
+	tmp += '</p>';
+	
+	tmp += '<p><strong>Storage</strong><br>';
+	tmp += ddFieldsMap(pStorage, pStorage.fileRoot, 0);
+	tmp += '</p>';
+
+/* 	
+	tmp += '<p>' + 'Developer:' + pDD["DEVELOPER"]["E"];
+	pDD["DISTRIBUTION PACKAGE"]["E"]="IMAGING"
+	pDD["ENTRIES"]["E"]=20990
+	pDD["GLOBAL NAME"]["E"]="^MAG(2005,"
+	pDD["LOOKUP PROGRAM"]["E"]=""
+	pDD["NAME"]["E"]="IMAGE"
+	pDD["NUMBER"]["E"])=2005
+	pDD["OLD COMPILED X-REF ROUTINE","E"]=""
+	pDD["PACKAGE REVISION DATA","E"]="93,117"
+	pDD["VERSION","E"]="3.0"
+	pDD["ARCHIVE FILE","E")=""
+	pDD["COMPILED CROSS-REFERENCES","E")="NO"
+	pDD["COMPILED X-REF ROUTINE","E")=""
+	pDD["DATE","E")=""
+ */	
+
+	return tmp;
+
+};
+
+var renderDDFieldDefinition = function(pFieldDef) {
+	var tmp = '';
+		tmp = '<p><strong>Description</strong></p>';
+		//tmp += "<pre>";
+		tmp += htmlEscape(wordProcessingArray(pFieldDef['DESCRIPTION']));
+		//tmp += "</pre>";
+		tmp += '<p></p>';
+		
+		tmp += '<p><strong>Technical Description</strong></p>';
+		//tmp += "<pre>";
+		tmp += htmlEscape(wordProcessingArray(pFieldDef['TECHNICAL DESCRIPTION']));
+		//tmp += "</pre>";
+		
+		tmp += '<p></p>';
+		
+		tmp += '<p><strong>Help-prompt</strong>: ' +  pFieldDef['HELP-PROMPT'] + '</p>';
+		tmp += '<table class="table  table-bordered">';		
+		
+		tmp += '<tr class="info">';
+		tmp += '<th>Type</th>';
+		tmp += '<th>Lenght</th>';
+		tmp += '<th>Specifier</th>';
+		tmp += '<th>Pointer</th>';
+		tmp += '<th>Location</th>';
+		tmp += '<th>Multiple-Valued</th>';
+		tmp += '</tr>';
+		
+		tmp += '<tr>';
+		tmp += '<td>' + pFieldDef['TYPE'] + '</td>';
+		tmp += '<td>' + pFieldDef['FIELD LENGTH'] + '</td>';
+		tmp += '<td>' + pFieldDef['SPECIFIER'] + '</td>';
+		tmp += '<td>' + pFieldDef['POINTER'] + '</td>';
+		tmp += '<td>' + pFieldDef['GLOBAL SUBSCRIPT LOCATION'] + '</td>';
+		tmp += '<td>' + pFieldDef['MULTIPLE-VALUED'] + '</td>';
+		tmp += '</tr>';
+
+		tmp += '<tr class="info">';
+		tmp += '<th>Read Access</th>' + '<th>Delete Access</th>' + '<th>Write Access</th>'; 
+		tmp += '<th>Audit</th>' + '<th>Audit Condition</th>';
+		tmp += '<th>Last Edited</th>';
+		tmp += '</tr>';
+
+		tmp += '<tr>';
+		tmp += '<td>' + pFieldDef['READ ACCESS'] + '</td>';
+		tmp += '<td>' + pFieldDef['DELETE ACCESS'] + '</td>';
+		tmp += '<td>' + pFieldDef['WRITE ACCESS'] + '</td>';
+		tmp += '<td>' + pFieldDef['AUDIT'] + '</td>';
+		tmp += '<td>' + pFieldDef['AUDIT CONDITION'] + '</td>';
+		tmp += '<td>' + pFieldDef['DATE FIELD LAST EDITED'] + '</td>';
+		tmp += '</tr>';
+		
+	var skipAttributes = ['LABEL', 'DESCRIPTION', 'TECHNICAL DESCRIPTION', 'HELP-PROMPT', 
+							'TYPE', 'SPECIFIER', 'POINTER', 'FIELD LENGTH', 'MULTIPLE-VALUED',
+							'GLOBAL SUBSCRIPT LOCATION',
+							'READ ACCESS', 'WRITE ACCESS', 'DELETE ACCESS',
+							'AUDIT', 'AUDIT CONDITION', 'DATE FIELD LAST EDITED'];
+	
+	for (var attr in pFieldDef) {
+		if (skipAttributes.indexOf(attr) > -1) continue;
+		
+		tmp += '<tr><td>' + attr + '</td> <td colspan=5>' + pFieldDef[attr] + '</td></tr>'; 
+	};
+
+	tmp += '</table>';
+ return tmp
+}
+
+var ddFieldsMap = function(pDDStorage, pRoot, pLevel) {
+	
+	var storage = pDDStorage.storage;
+	var subscript;
+	var subfile;
+	var piece;
+	var subscript;
+	var prevPiece;
+	var field;
+	var tmp = '';
+	
+	tmp += '<p>' + pRoot + '0) = '; 
+	tmp += 	'1 ' + pDDStorage.fileName + ' ^ 2 <a class="btn-link" data-file="' + pDDStorage.fileNumber + '" >' + pDDStorage.fileNumber + ' </a> ^ 3 most recently assigned IEN ^ 4 total number of entries';
+	tmp += '</p>';
+			
+	for (var index = 0; index < storage.length ; index += 1) {
+		subscript = storage[index].subscript;
+		
+		var quotedSubscript = isNaN(subscript) ? '"' + subscript + '"' : subscript;		
+		global = pRoot + 'D' + pLevel + ',' + quotedSubscript;
+		
+		if (storage[index].hasOwnProperty('piece')) { 
+			del = '';
+			fields = '';	// all fields in a node			
+			var prevPiece = 0;
+			var node = storage[index]['piece'];
+		
+			for (piece in node ) {
+				// print gaps between pieces
+				for (var i = prevPiece + 1; i <  Number(piece) ; i += 1) {
+					field = i + ' free';
+					fields += del + field;
+					del = ' ^ ';
+				};
+				
+				field = piece + ' <a class="btn-link" '
+								+ ' data-file-number="' + pDDStorage.fileNumber + '"'
+								+ ' data-field-number="' + node[piece].fieldNumber + '" >'
+								+ '(#' + node[piece].fieldNumber + ') '
+								+  node[piece].fieldName + '</a>';
+				fields += del + field ;
+				del = ' ^ ';
+				prevPiece =  Number(piece);
+			};
+			
+			tmp += '<p>' + global + ') = ' + fields + '</p>';
+		
+		} else if (storage[index].hasOwnProperty('subfile')) {
+		
+			tmp += ddFieldsMap(storage[index].subfile, global + ',', pLevel + 1);
+		};
+	
+	};
+	
+	// get computed fields
+	if (pDDStorage.hasOwnProperty('computed')) { 
+		tmp += '<p>' + '<strong>' + 'Computed fields' + '</strong>' + '</p>';
+		
+		for (index = 0; index < pDDStorage.computed.length; index += 1 ) {
+			tmp += '<p>';
+			tmp += ' <a class="btn-link" '
+							+ ' data-file-number="' + pDDStorage.fileNumber + '"'
+							+ ' data-field-number="' + pDDStorage.computed[index].fieldNumber + '" >'
+							+ '(#' + pDDStorage.computed[index].fieldNumber + ') '
+							+ pDDStorage.computed[index].fieldName + '</a>';
+			tmp += '</p>';
+		};
+	};
+	
+	return tmp;
+};
 		
 var trimValue = function(str) {
 		var x;
@@ -1433,9 +1673,40 @@ var wordProcessingArray = function(root) {
 		return result;	
 	};
 
+var wordProcessingArray2 = function(root) {
+
+		var result = "";
+		var line;
+		var pre = false;
+		for (line in root) {
+			if (line > 0) {
+				if (root[line].substring(0, 1) === " ") { 
+					if (!pre) {
+						result += '<pre>';	
+						pre = true;
+					} else {
+						result += '<br>';
+					};
+				} else {
+					if (pre) {
+						result += '</pre>';
+						pre = false;
+					} else {
+						result += ' ';
+					};
+				};
+				result += root[line];
+			};
+			
+		}
+				
+		return result;	
+	};
+
 	// from Chris Casey code - take any Vista table format JSON object and make it a table
 	// TODO 
 var dispJSON = function(jobj,debug) {
+//	return parseValue(jobj,null,null);
 	//debug = true;
 	var jtext='<table class="table table-condensed table-striped "><tbody>';
 	var del='<tr><td>',dela='</td></tr>',deli='</td><td>' ;

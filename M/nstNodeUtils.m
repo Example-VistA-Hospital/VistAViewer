@@ -78,6 +78,7 @@ getFileRecordByIEN(TMP) ; Return a file record by file and IEN
 getFileFields(TMP) ; Return a file field names
  ; @TMP@("input","pFile")
  ;
+ K @TMP@("result")
  N pFile
  N tI,tList,tFldId
  S pFile=@TMP@("input","pFile")
@@ -89,4 +90,28 @@ getFileFields(TMP) ; Return a file field names
  . S tList(fldId,"type")=$$GET1^DID(pFile,tFldId,"","SPECIFIER")
  . Q
  M @TMP@("result")=tList
+ Q "{""success"" : ""1""}"
+ ;
+getFieldAttributes(TMP) ; Return a FileMan field attributes
+ ; @TMP@("input","pFile")
+ ; @TMP@("input","pField")  
+ ; @TMP@("input","pFlags")
+ ; @TMP@("input","pAttributes")
+ ;
+ N pFile,pField,pFlags,pAttributes
+ N OUT,ERR
+ S pFile=@TMP@("input","pFile")
+ S pField=@TMP@("input","pField")
+ S pFlags=@TMP@("input","pFlags")
+ S pAttributes=@TMP@("input","pAttributes")
+ ;
+ K @TMP@("error")
+ K @TMP@("result")
+ ;
+ S:pAttributes="" pAttributes="*"  ; default all fields
+ D FIELD^DID(pFile,pField,pFlags,pAttributes,"OUT","ERR")
+ I $D(ERR("DIERR")) D  Q "{""success"" : ""0""}"
+ . M @TMP@("error")=ERR
+ . Q
+ M @TMP@("result")=OUT
  Q "{""success"" : ""1""}"
