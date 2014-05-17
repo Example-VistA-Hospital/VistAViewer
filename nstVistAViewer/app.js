@@ -293,7 +293,8 @@ EWD.application = {
 		},
 			 
 		'rpcTesterForm.html' : function(messageObj) {
-		
+
+			// RPC execute
 			$('#RPCExecuteBtn').click(function(e) {
 					// save DUZ and context
 					application.session.rpcDUZ = $('#DUZ').val();
@@ -322,16 +323,29 @@ EWD.application = {
 							var itemSubscript;
 							var itemValue;
 							var itemSubscriptObject;
+							var itemSubscriptValue;
+							var subscripts;
 							
 							var listItems = $( '#RPCInput' + i + '-list').children();
-							rpc.input[i].value = [];
+							rpc.input[i].value = {};
 							var sub = {};
 							var scriptsArray;
 							for (var index = 0; index < listItems.length; ++index) {				
 								itemSubscript = $('#' + listItems[index].id + '-item-subscript').val();
 								itemValue = $('#' + listItems[index].id + '-item-value').val();
-																
-								rpc.input[i].value[index] = {"subscripts": itemSubscript.split(','), "data" : itemValue};
+								
+								// create a JSON object for the node with multiple subscripts (or single)
+								subscripts = itemSubscript.split(',');
+
+								itemSubscriptValue = itemValue;
+								
+								for (var j = subscripts.length - 1; j >= 0 ; j += -1) {
+									itemSubscriptObject = {};
+									itemSubscriptObject[subscripts[j]] = itemSubscriptValue;
+									itemSubscriptValue = itemSubscriptObject;
+								};
+								
+								$.extend(true, rpc.input[i].value, itemSubscriptObject); // recursive merge of JSON objects
 							}
 						} else if (rpcInputParam.type === 'WORD PROCESSING') {
 							rpc.input[i].value = $('#RPCInput' + i).val().split('\n');
@@ -742,14 +756,29 @@ EWD.application = {
 			if (!result.success) {
 				str = 'Error : ' + result.message;
 			} else {
-				if (result.result.type === "ARRAY" || result.result.type === "GLOBAL ARRAY" || result.result.type === "WORD PROCESSING" ) {
+				if (result.result.type === "GLOBAL ARRAY") {
+					str = result.result.value;
+					
+					EWD.sockets.sendMessage({
+						type: "retrieveGlobalArray",
+						params: {
+							global : str,
+							callback : 'displayRPCGlobalArray'
+							}
+					});
+					
+				} else if (result.result.type === "ARRAY" || result.result.type === "WORD PROCESSING" ) {
 					str = JSON.stringify(result.result.value, null, '\t')
-				}
-				else {
+				} else {
 					str = result.result.value;
 				};
 			};
 			document.getElementById("RPCTesterResult").innerHTML = '<pre>' + str + '</pre>';
+		},
+	
+		'displayRPCGlobalArray': function(messageObj) {
+			var str = JSON.stringify(messageObj.params.result, null, 2);
+			$('#RPCTesterResult').append( '<pre>' +  str + '</pre>' );
 		},
 	
 		'displayDDDefinition' : function(messageObj) {
