@@ -2,7 +2,7 @@
 	VistA Patch Viewer
 	Author: Nikolay Topalov
 
-	Copyright 2014 Nikolay Topalov
+	Copyright 2014 - 2016 Nikolay Topalov
 
 	Licensed under the Apache License, Version 2.0 (the "License");
 	you may not use this file except in compliance with the License.
@@ -756,18 +756,9 @@ EWD.application = {
 			if (!result.success) {
 				str = 'Error : ' + result.message;
 			} else {
-				if (result.result.type === "GLOBAL ARRAY") {
-					str = result.result.value;
-					
-					EWD.sockets.sendMessage({
-						type: "retrieveGlobalArray",
-						params: {
-							global : str,
-							callback : 'displayRPCGlobalArray'
-							}
-					});
-					
-				} else if (result.result.type === "ARRAY" || result.result.type === "WORD PROCESSING" ) {
+				if (typeof result.result.value === "undefined")
+						str = 'RPC result is undefined';
+				else if (result.result.type === "ARRAY" || result.result.type === "WORD PROCESSING" || result.result.type === "GLOBAL ARRAY") {
 					str = JSON.stringify(result.result.value, null, '\t')
 				} else {
 					str = result.result.value;

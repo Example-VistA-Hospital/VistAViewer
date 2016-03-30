@@ -1,8 +1,8 @@
-nstRPCWrapper ; NST - VistA RPC wrapper ; 02/26/2014 9:36PM
+nstRPCWrapper ; NST - VistA RPC wrapper ; 03/29/2016 9:36PM
  ;;
  ;;	Author: Nikolay Topalov
  ;;
- ;;	Copyright 2014 Nikolay Topalov
+ ;;	Copyright 2014-2016 Nikolay Topalov
  ;;
  ;;	Licensed under the Apache License, Version 2.0 (the "License");
  ;;	you may not use this file except in compliance with the License.
@@ -56,10 +56,11 @@ rpcExecute(TMP) ;
  ;    result 1 - success
  ;           0 - error
  ;
- N rpc,pRpc,tArgs,tCnt,tI,tOut,tResult,X
- N XWBAPVER,DUZ
+ N err,rpc,pRpc,tArgs,tCnt,tI,tOut,tResult,X
+ N XWBAPVER,XWBPTYPE,XWBWRAP,DUZ
  ;
  S U=$G(U,"^")  ; set default to "^"
+ S $ETRAP="D ^%ZTER H" ;Set up the error trap
  ;
  S pRpc("name")=$G(@TMP@("name"))
  Q:pRpc("name")="" $$error(-1,"RPC name is missing")
@@ -83,8 +84,8 @@ rpcExecute(TMP) ;
  Q:rpc("routineName") $$error(-4,"Undefined routine name for RPC ["_pRpc("name")_"]")
  ;
  ; 1=SINGLE VALUE; 2=ARRAY; 3=WORD PROCESSING; 4=GLOBAL ARRAY; 5=GLOBAL INSTANCE
- S rpc("resultType")=$P(X,"^",4)
- S rpc("resultWrapOn")=$P(X,"^",8)
+ S (rpc("resultType"),XWBPTYPE)=$P(X,"^",4)
+ S (rpc("resultWrapOn"),XWBWRAP)=$P(X,"^",8)
  ;
  ; is the RPC available
  D CKRPC^XWBLIB(.tOut,pRpc("name"),pRpc("use"),XWBAPVER)
@@ -103,10 +104,24 @@ rpcExecute(TMP) ;
  ;
  S X="D "_rpc("routineTag")_"^"_rpc("routineName")_"(.tResult"_$S(tArgs="":"",1:","_tArgs)_")"
  X X  ; execute the routine
- M @TMP@("result","value")=tResult
- S @TMP@("result","type")=$$EXTERNAL^DILFD(8994,.04,,rpc("resultType"))
- Q $$success()
  ;
+ S @TMP@("result","type")=$$EXTERNAL^DILFD(8994,.04,,XWBPTYPE) ; some RPCs change the type/wrapping on during the RPC execution
+ S @TMP@("result","wrapOn")=XWBWRAP
+ ;
+ I "1,2,3,5"[XWBPTYPE D  ; single value, array, word-processing, global instance 
+ . M @TMP@("result","value")=tResult
+ . Q
+ ;
+ S err=""
+ I XWBPTYPE=4 D
+ . I $E($G(tResult))'="^" S err=$$error(-5,"RPC ["_pRpc("name")_"] result is not a global array.") Q
+ . M @TMP@("result","value")=@tResult
+ . K @tResult  ; see definition of RETURN VALUE TYPE field (#8994, .04) and SNDDATA^XWBRW 
+ . Q
+ ;
+ I err'="" Q ERR
+ ;
+ Q $$success()
  ;
 isInputRequired(pIEN,pSeqIEN) ; is input RPC parameter is required
  ; pIEN - RPC IEN in file #8994
@@ -114,42 +129,36 @@ isInputRequired(pIEN,pSeqIEN) ; is input RPC parameter is required
  ;
  Q $P(^XWB(8994,pIEN,2,pSeqIEN,0),U,4)=1
  ;
-buildArguments(out,pIEN,TMP) ;Build RPC argument list
+buildArguments(out,pIEN,TMP) ;Build RPC argument list based on input parameters provided
  ;
+ ; pIEN - IEN of the RPC in file #8994
+ ; TMP - reference to a global with input parameters, e.g. ^TMP("ewd",3720,"RPC")
  ; Return values
  ; =============
  ; Success 1
  ; Error   -n^error message
  ;
  ; out array with arguments
- N tCnt,tError,tIEN,tI,tII,tRequired,tParam,tIndexSeq,X
+ N tCnt,tError,tII,X
  ;
- S tI=0
  S tII=""
  S tCnt=0
  ;
  K out
  S out=""
  S tError=0
- S tIndexSeq=$D(^XWB(8994,pIEN,2,"PARAMSEQ"))  ; is the cross-reference defined
- S tParam=$S(tIndexSeq:"^XWB(8994,pIEN,2,""PARAMSEQ"")",1:"^XWB(8994,pIEN,2)")
  ;
- F  S tI=$O(@tParam@(tI)) Q:('tI)!(tError)  D
- . S tII=$O(@TMP@("input",tII))
- . S tIEN=$S(tIndexSeq:$O(@tParam@(tI,"")),1:tI)  ; get the IEN of the input parameter
- . S tRequired=$$isInputRequired(pIEN,tIEN)
- . I tRequired,'$D(@TMP@("input",tII,"value")) S tError="-5^Required input paramater is missing." Q
- . I '$D(@TMP@("input",tII,"value")) S out=out_"," Q
+ F  S tII=$O(@TMP@("input",tII)) Q:tII=""!(tError)  D
  . I $D(@TMP@("input",tII,"value"))=1 D  Q
- . . S out=out_"tA"_tI_","   ; add the argument
+ . . S out=out_"tA"_tII_","   ; add the argument
  . . I $$UP^XLFSTR($G(@TMP@("input",tII,"type")))="REFERENCE" D
- . . . S tCnt=tCnt+1,out(tI,tCnt)="S tA"_tI_"=@@TMP@(""input"","_tII_",""value"")"  ; set it
+ . . . S tCnt=tCnt+1,out(tI,tCnt)="S tA"_tII_"=@@TMP@(""input"","_tII_",""value"")"  ; set it
  . . . Q 
- . . E  S tCnt=tCnt+1,out(tI,tCnt)="S tA"_tI_"=@TMP@(""input"","_tII_",""value"")"  ; set it as action for later
+ . . E  S tCnt=tCnt+1,out(tII,tCnt)="S tA"_tII_"=@TMP@(""input"","_tII_",""value"")"  ; set it as action for later
  . . Q
  . ; list/array
- . S out=out_".tA"_tI_","
- . S tCnt=tCnt+1,out(tI,tCnt)="M tA"_tI_"=@TMP@(""input"","_tII_",""value"")"  ; merge it
+ . S out=out_".tA"_tII_","
+ . S tCnt=tCnt+1,out(tII,tCnt)="M tA"_tII_"=@TMP@(""input"","_tII_",""value"")"  ; merge it
  . Q
  ;
  Q:tError tError
@@ -196,3 +205,47 @@ CHKPRMIT(pRPCName,pUser,pContext) ;checks to see if remote procedure is permited
  S X=$$CHK^XQCS(pUser,pContext,pRPCName)         ;do the check
  S:'X result=X
  Q result
+ ;
+buildArgumentsR(out,pIEN,TMP) ;Build RPC argument list by using RPC definition
+ ; Not in use. The definition of the RPC is not well kept up to date with 
+ ; the underlying M entry code. 
+ ; 
+ ; Return values
+ ; =============
+ ; Success 1
+ ; Error   -n^error message
+ ;
+ ; out array with arguments
+ N tCnt,tError,tIEN,tI,tII,tRequired,tParam,tIndexSeq,X
+ ;
+ S tI=0
+ S tII=""
+ S tCnt=0
+ ;
+ K out
+ S out=""
+ S tError=0
+ S tIndexSeq=$D(^XWB(8994,pIEN,2,"PARAMSEQ"))  ; is the cross-reference defined
+ S tParam=$S(tIndexSeq:"^XWB(8994,pIEN,2,""PARAMSEQ"")",1:"^XWB(8994,pIEN,2)")
+ ;
+ F  S tI=$O(@tParam@(tI)) Q:('tI)!(tError)  D
+ . S tII=$O(@TMP@("input",tII))
+ . S tIEN=$S(tIndexSeq:$O(@tParam@(tI,"")),1:tI)  ; get the IEN of the input parameter
+ . S tRequired=$$isInputRequired(pIEN,tIEN)
+ . I tRequired,'$D(@TMP@("input",tII,"value")) S tError="-5^Required input paramater is missing." Q
+ . I '$D(@TMP@("input",tII,"value")) S out=out_"," Q
+ . I $D(@TMP@("input",tII,"value"))=1 D  Q
+ . . S out=out_"tA"_tI_","   ; add the argument
+ . . I $$UP^XLFSTR($G(@TMP@("input",tII,"type")))="REFERENCE" D
+ . . . S tCnt=tCnt+1,out(tI,tCnt)="S tA"_tI_"=@@TMP@(""input"","_tII_",""value"")"  ; set it
+ . . . Q 
+ . . E  S tCnt=tCnt+1,out(tI,tCnt)="S tA"_tI_"=@TMP@(""input"","_tII_",""value"")"  ; set it as action for later
+ . . Q
+ . ; list/array
+ . S out=out_".tA"_tI_","
+ . S tCnt=tCnt+1,out(tI,tCnt)="M tA"_tI_"=@TMP@(""input"","_tII_",""value"")"  ; merge it
+ . Q
+ ;
+ Q:tError tError
+ S out=$E(out,1,$L(out)-1)
+ Q 1
